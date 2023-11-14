@@ -206,7 +206,7 @@ esp_err_t connect_tcp_server(void){
 
 	//Coté serveur
 	serverInfo.sin_family = AF_INET;
-	serverInfo.sin_addr.s_addr = inet_addr("192.168.0.107");; //ordi = 192.168.56.1
+	serverInfo.sin_addr.s_addr = inet_addr("***********"); //adresse IP
 	serverInfo.sin_port = htons(59900);
 
 	int sock = socket(AF_INET, SOCK_STREAM, 0);

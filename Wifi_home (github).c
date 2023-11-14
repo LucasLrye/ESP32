@@ -22,14 +22,22 @@
 #include "lwip/netdb.h"
 #include "lwip/dns.h"
 
+#include "esp_http_server.h"
+
+#include "time.h"
+#include "lwip/apps/sntp.h"
+
+#include <freertos/semphr.h>
+#include <driver/gpio.h>
+#include <driver/ledc.h>
 
 /* The examples use WiFi configuration that you can set via project configuration menu
 
    If you'd rather not, just change the below entries to strings with
    the config you want - ie #define EXAMPLE_WIFI_SSID "mywifissid"
 */
-#define EXAMPLE_ESP_WIFI_SSID      "privé"
-#define EXAMPLE_ESP_WIFI_PASS      "privé"
+#define EXAMPLE_ESP_WIFI_SSID      ""
+#define EXAMPLE_ESP_WIFI_PASS      ""
 #define EXAMPLE_ESP_MAXIMUM_RETRY  5
 
 #if CONFIG_ESP_WIFI_AUTH_OPEN
@@ -52,6 +60,13 @@
 
 #define TCP_SUCESS 1<<0
 #define TCP_FAILURE 1 <<1
+
+
+#define NTP_SERVER "pool.ntp.org"
+#define GMT_OFFSET_SEC 3600
+//#define DAYLIGHT_OFFSET_SEC 3600
+#define LED_PIN 25 //LED
+
 /*Global*/
 
 /* FreeRTOS event group to signal when we are connected, contain status informations*/
@@ -137,7 +152,7 @@ esp_err_t wifi_init_sta()
              * to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
              * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
              */
-            .threshold.authmode = privé,
+            .threshold.authmode = **********,
             .pmf_cfg ={
             	.capable = true,
             	.required = false
@@ -183,7 +198,7 @@ esp_err_t wifi_init_sta()
 
     return status;
 }
-
+////////////////////////////////////////////////////////////////////////
 //connect to the server and return the result
 esp_err_t connect_tcp_server(void){
 	struct  sockaddr_in serverInfo = {0};
@@ -191,7 +206,7 @@ esp_err_t connect_tcp_server(void){
 
 	//Coté serveur
 	serverInfo.sin_family = AF_INET;
-	serverInfo.sin_addr.s_addr = inet_addr("privé");; //IP du serveur visé
+	serverInfo.sin_addr.s_addr = inet_addr("192.168.0.107");; //ordi = 192.168.56.1
 	serverInfo.sin_port = htons(59900);
 
 	int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -261,7 +276,136 @@ esp_err_t connect_tcp_server(void){
 
 	return TCP_SUCESS;
 }
+////////////////////////////////////////////////////////////////
+//HTTP code pour page internet
+static esp_err_t on_url_hit(httpd_req_t *req){
+    char* resp_str = "ESP32 de Lucas, pour de grand projet";
+    httpd_resp_send(req, resp_str, strlen(resp_str));
+    return ESP_OK;
+}
 
+
+static const httpd_uri_t root = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = on_url_hit,
+    .user_ctx = NULL
+};
+////////////////////////////////////////////////////////
+//Récupère l'heure
+void obtain_time(void){
+
+
+    // Configurer le fuseau horaire pour la France (Paris)
+    setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
+    
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, NTP_SERVER);
+    sntp_init();
+    // wait for time to be set
+    struct tm timeinfo;
+    time_t now = 0;
+    int retry = 0;
+    const int retry_count = 10;
+    while (retry < retry_count) {
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        if (timeinfo.tm_year >= (2023 - 1900)) {
+            break;  // Sortir de la boucle si l'heure est correcte
+        }
+        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        retry++;
+    }
+    ESP_LOGI(TAG, "System time is set");
+
+
+}
+
+void display_time_on_monitor(void) {
+    time_t now;
+    struct tm timeinfo;
+    char strftime_buf[64];
+
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    int seconde_time = timeinfo.tm_sec;
+    if (seconde_time != 0){
+        vTaskDelay((60000-(seconde_time*1000)) / portTICK_PERIOD_MS);  // Délai de 60-seconde
+    }
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), "%A %d %B %Y, Week %U, %H:%M:%S", &timeinfo); // a afficher sur le lcd
+        ESP_LOGI(TAG, "Current time: %s", strftime_buf);
+
+}
+
+void obtain_time_task(void *pvParameters) {
+    while (1) {
+        obtain_time();
+        vTaskDelay(300000 / portTICK_PERIOD_MS);  // Attendre 5 minute avant la prochaine synchronisation
+    }
+}
+
+void display_time_on_monitor_task(void *pvParameters) {
+    while (1) {
+        display_time_on_monitor();
+        vTaskDelay(60000 / portTICK_PERIOD_MS);  // Attendre 1 minute entre les affichages
+    }
+}
+
+/////////////////////////////////////////////////////
+//Configuration
+void configure_ledc() {
+    // Configurer le canal LEDC
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .timer_num = LEDC_TIMER_0,
+        .duty_resolution = LEDC_TIMER_8_BIT,
+        .freq_hz = 5000,  // Fréquence PWM (5 kHz)
+    };
+    ledc_timer_config(&ledc_timer);
+
+    ledc_channel_config_t ledc_channel = {
+        .gpio_num = LED_PIN,
+        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .channel = LEDC_CHANNEL_0,
+        .intr_type = LEDC_INTR_DISABLE,
+        .timer_sel = LEDC_TIMER_0,
+        .duty = 0,  // Initial duty cycle (0 to 255)
+        .hpoint = 0,
+    };
+    ledc_channel_config(&ledc_channel);
+}
+
+void set_led_brightness(uint8_t brightness) {
+    // Configurer la luminosité de la LED en utilisant le canal LEDC
+    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, brightness);
+    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+//Ajustement de la LED
+void led_fade_task(void) {
+    uint8_t brightness = 0;
+    int8_t fade_direction = 1;  // 1 pour augmenter la luminosité, -1 pour diminuer
+
+    while (1) {
+        set_led_brightness(brightness);
+
+        // Augmenter ou diminuer la luminosité
+        brightness += fade_direction;
+
+        // Changer la direction si la luminosité atteint ses limites
+        if (brightness == 255 || brightness == 0) {
+            fade_direction = -fade_direction;
+        }
+
+        vTaskDelay(10 / portTICK_PERIOD_MS);  // Délai pour la transition en douceur
+    }
+}
+
+////////////////////////////////////////////////////////////
+//MAIN
 void app_main(void)
 {
 	esp_err_t status = WIFI_FAIL_BIT;
@@ -284,10 +428,52 @@ void app_main(void)
     }
 
     //Other connect with socket, action with user
+    /*
     status = connect_tcp_server();
     if (TCP_SUCESS != status){
     	ESP_LOGI(TAG, "Failed to connected to remote server, dying...");
-    	return;
+    	//return;
     }
+    */
+
+    //configuration server http
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    httpd_handle_t server;
+
+    if (httpd_start(&server, &config)==ESP_OK){
+        httpd_register_uri_handler(server, &root);
+    }
+
+    // Configuration de les broches (25) en mode analogique pour la LED
+    configure_ledc();
+    //Tache LED
+    led_fade_task();
+
+    //Initialize NTP (network time protocol)
+    // Créer la tâche pour l'obtention du temps
+    obtain_time();
+    //xTaskCreate(obtain_time_task, "ObtainTimeTask", 4096, NULL, 1, NULL);
+
+    // Créer la tâche pour l'affichage du temps sur le moniteur
+    //xTaskCreate(display_time_on_monitor_task, "DisplayTimeTask", 4096, NULL, 2, NULL);
+    while (1) {
+        display_time_on_monitor();
+        vTaskDelay(60000 / portTICK_PERIOD_MS);  // Attendre 1 minute entre les affichages
+    }
+    
+
+ 
+    //xTaskCreate(increaseBrightnessTask, "IncreaseTask", 4096, NULL, 1, NULL);
+    
+
+    // Démarrer le planificateur FreeRTOS
+    vTaskStartScheduler();
+
+
+
+
+
+
+    ESP_LOGI(TAG, "Fin");
 
 }

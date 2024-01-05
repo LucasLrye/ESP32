@@ -46,10 +46,6 @@ int *minutes;
 #define GMT_OFFSET_SEC 3600
 //#define DAYLIGHT_OFFSET_SEC 3600
 
-#define LED_PIN 25 //LED
-#define BP_4 5 //BP poussoire
-#define BUTTON_PIN_4 GPIO_NUM_4
-
 
 ////////////////////////////////////////////////////////////
 //WIFI
@@ -215,7 +211,7 @@ void obtain_time(void){
 
 void display_time_on_monitor(void) {
 
-    // LCD
+    // ////////////LCD
     lcd_clear();
     lcd_put_cur(0, 0);
 
@@ -238,7 +234,7 @@ void display_time_on_monitor(void) {
 
     // Format the date string
     char date_buffer[64];
-    strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%Y", &timeinfo);
+    strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
 
     lcd_send_string(date_buffer);
 
@@ -258,7 +254,7 @@ void display_time_on_monitor(void) {
 void obtain_time_task(void *pvParameters) {
     while (1) {
         obtain_time();
-        vTaskDelay(3600000 / portTICK_PERIOD_MS);  // Attendre 60 minute avant la prochaine synchronisation
+        vTaskDelay(86400000 / portTICK_PERIOD_MS);  // Attendre 24 heure = 3600 minutes avant la prochaine synchronisation
     }
 }
 
@@ -285,7 +281,7 @@ static const httpd_uri_t root = {
     .user_ctx = NULL
 };
 ////////////////////////////////////////////////////////
-//LCD
+//LCD init (autre partie dans affichage pour time)
 static esp_err_t i2c_master_init(void)
 {
     int i2c_master_port = I2C_NUM_0;
@@ -302,61 +298,6 @@ static esp_err_t i2c_master_init(void)
     i2c_param_config(i2c_master_port, &conf);
 
     return i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0);
-}
-
-
-void display_time_on_lcd(void)
-{
-    
-    lcd_clear();
-    lcd_put_cur(0, 0);
-
-    time_t now;
-    struct tm timeinfo;
-    char strftime_buf[64];
-    time(&now);
-    localtime_r(&now, &timeinfo);
-
-
-    // Get the current time avec seconde à 00
-    time(&now);
-    localtime_r(&now, &timeinfo);
-
-    strftime(strftime_buf, sizeof(strftime_buf), "%A %d %B %Y, Week %U, %H:%M:%S", &timeinfo); // a afficher sur le lcd
-    ESP_LOGI(TAG, "Current time: %s", strftime_buf);
-
-    // Format the date string
-    char date_buffer[64];
-    strftime(date_buffer, sizeof(date_buffer), "%A %d %B %Y", &timeinfo);
-
-    lcd_send_string(date_buffer);
-
-    // Determine the size of the buffer needed
-    int buffer_size = snprintf(NULL, 0, "%02dh %02dmin", *hours, *minutes);
-    // Allocate a buffer of the required size plus one for the null-terminating character
-    char buffer[buffer_size +1];
-
-    // Format the string into the buffer
-    snprintf(buffer, sizeof(buffer), "%02dh %02dmin", *hours, *minutes);
-
-
-    // Format the time string
-    char time_buffer[64];
-    strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
-
-    lcd_put_cur(1, 0);
-    lcd_send_string(time_buffer);
-    ESP_LOGI(TAG, "ecriture sur LCD");  
-}
-
-void time_display_task(void *pvParameters)
-{
-    while (1)
-    {    
-        display_time_on_lcd();
-        vTaskDelay(10000 / portTICK_PERIOD_MS); // Update every 5 seconds
-        //(*minutes) += 1;
-    }
 }
 /////////////////////////////////////////////////////
 //Btn poussoir
@@ -435,6 +376,14 @@ void bouton_alarme(void) {
     if (etatBouton == 0){ //declenche setting
         cpt = 0;
         ESP_LOGI(TAG, "compteur: %d", cpt); 
+        //affiche sur LED
+        lcd_clear();
+        lcd_put_cur(0, 0);
+        lcd_send_string("Alarm set to (h): ");
+        lcd_put_cur(1,0);
+        char alarme_txt[64];
+        snprintf(alarme_txt, sizeof(alarme_txt), "%dh %dmin", *hours, *minutes);
+        lcd_send_string(alarme_txt);
         vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton       
     }
 
@@ -449,7 +398,12 @@ void bouton_alarme(void) {
             }
             char alarme_txt[64];
             snprintf(alarme_txt, sizeof(alarme_txt), "%dh %dmin", *hours, *minutes);
-            ESP_LOGI(TAG, "alarme: %s", alarme_txt); // Log the buffer content
+            //ESP_LOGI(TAG, "alarme: %s", alarme_txt); // Log the buffer content
+            //affiche sur LED
+            lcd_put_cur(0, 0);
+            lcd_send_string("Alarm set to (h) : ");
+            lcd_put_cur(1,0);
+            lcd_send_string(alarme_txt);
             vTaskDelay(pdMS_TO_TICKS(50)); // Attendre un court moment pour éviter les rebonds du bouton
 
         }else if(cpt == 1 && etatBouton_2 ==0){ //augmente minutes
@@ -459,16 +413,54 @@ void bouton_alarme(void) {
             }
             char alarme_txt[64];
             snprintf(alarme_txt, sizeof(alarme_txt), "%dh %dmin", *hours, *minutes);
-            ESP_LOGI(TAG, "alarme: %s", alarme_txt);
+            //ESP_LOGI(TAG, "alarme: %s", alarme_txt);
+            //affiche sur LED
+            lcd_clear();
+            lcd_put_cur(0, 0);
+            lcd_send_string("Alarm set to (m): ");
+            lcd_put_cur(1,0);
+            lcd_send_string(alarme_txt);
             vTaskDelay(pdMS_TO_TICKS(50));
         }
         if(etatBouton == 0){ //change
             cpt +=1;
             ESP_LOGI(TAG, "compteur: %d", cpt);
-            vTaskDelay(pdMS_TO_TICKS(1000));
+
+            if (cpt == 1){
+            char alarme_txt[64];
+            snprintf(alarme_txt, sizeof(alarme_txt), "%dh %dmin", *hours, *minutes);
+            //affiche sur LED
+            lcd_clear();
+            lcd_put_cur(0, 0);
+            lcd_send_string("Alarm set to (m): ");
+            lcd_put_cur(1,0);
+            lcd_send_string(alarme_txt);
+            } else if(cpt > 2){
+            lcd_clear();
+            time_t now;
+            struct tm timeinfo;
+            time(&now);
+            localtime_r(&now, &timeinfo);
+            
+            // Format the date string
+            char date_buffer[64];
+            strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
+            lcd_send_string(date_buffer);
+
+            // Format the time string
+            char time_buffer[64];
+            strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
+            lcd_put_cur(1, 0);
+            lcd_send_string(time_buffer);
+        }
+
+            vTaskDelay(pdMS_TO_TICKS(50));
+
         }
         vTaskDelay(pdMS_TO_TICKS(500));
     }
+
+
 }
 
 void bouton_task(void *pvParameters)
@@ -638,3 +630,4 @@ void app_main(void)
     //////////////////////////////////////////////////////
     */
 }
+

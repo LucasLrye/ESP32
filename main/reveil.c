@@ -435,7 +435,7 @@ void bouton_alarme(void) {
             lcd_send_string("Alarm set to (m): ");
             lcd_put_cur(1,0);
             lcd_send_string(alarme_txt);
-            } else if(cpt > 2){
+            } else if(cpt == 2){
             lcd_clear();
             time_t now;
             struct tm timeinfo;

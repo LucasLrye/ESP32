@@ -23,8 +23,16 @@
 #include <driver/gpio.h>
 #include <driver/ledc.h>
 #include <freertos/semphr.h>
+#include <stdbool.h>
 
+// Tag for LOG message
 static const char *TAG = "REVEIL";
+// Hour and minutes of the alarm --> good way is to use a struct but flemme
+int *hours;
+int *minutes;
+// Alarm set or NOT, use semaphore there because it is use at different place to know if we have the alarm or not
+bool alarm_set = false;
+SemaphoreHandle_t alarmset_Mutex;
 
 #define I2C_MASTER_SCL_IO           CONFIG_I2C_MASTER_SCL      /*!< GPIO number used for I2C master clock 22*/
 #define I2C_MASTER_SDA_IO           CONFIG_I2C_MASTER_SDA      /*!< GPIO number used for I2C master data  21*/
@@ -33,8 +41,7 @@ static const char *TAG = "REVEIL";
 #define I2C_MASTER_TX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_TIMEOUT_MS       1000
-int *hours;
-int *minutes;
+
 
 #define EXAMPLE_ESP_WIFI_SSID      ""
 #define EXAMPLE_ESP_WIFI_PASS      ""
@@ -157,8 +164,9 @@ esp_err_t wifi_init_sta()
     /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
      * happened. */
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
-                 EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS); //Impossible de cacher le mot de passe..
+        
+        ESP_LOGI(TAG, "connected to ap SSID:%s password:",
+                 EXAMPLE_ESP_WIFI_SSID); //Impossible de cacher le mot de passe..
         status = WIFI_CONNECTED_BIT;
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
@@ -211,7 +219,7 @@ void obtain_time(void){
 
 void display_time_on_monitor(void) {
 
-    // ////////////LCD
+    // LCD Part
     lcd_clear();
     lcd_put_cur(0, 0);
 
@@ -245,7 +253,7 @@ void display_time_on_monitor(void) {
     lcd_put_cur(1, 0);
     lcd_send_string(time_buffer);
 
-    //Console
+    //Console Part
     ESP_LOGI(TAG, "Date: %s", date_buffer);
     ESP_LOGI(TAG, "Time: %s", time_buffer);
     }
@@ -370,10 +378,49 @@ void cleanup_time_variables(void)
 }
 
 void bouton_alarme(void) {
-    int etatBouton = gpio_get_level(BOUTON_PIN_1);
+    int etatBouton_1 = gpio_get_level(BOUTON_PIN_1);
     int etatBouton_2 = gpio_get_level(BOUTON_PIN_2);
+    int etatBouton_3 = gpio_get_level(BOUTON_PIN_3);
     int cpt = 2;
-    if (etatBouton == 0){ //declenche setting
+
+    if (etatBouton_3 == 0){
+        // Prendre le mutex avant de modifier la variable
+        xSemaphoreTake(alarmset_Mutex, portMAX_DELAY);
+        alarm_set = !alarm_set;
+        ESP_LOGI(TAG, "Alarme is now set to  %s\n", alarm_set ? "true" : "false");
+        //affiche sur LED
+        lcd_clear();
+        lcd_put_cur(0, 0);
+        lcd_send_string("Alarm clock is : ");
+        lcd_put_cur(1,0);
+        char alarmset_txt[64];
+        if (alarm_set){
+            snprintf(alarmset_txt, sizeof(alarmset_txt), "ACTIVATED");
+        }else{
+            snprintf(alarmset_txt, sizeof(alarmset_txt), "NOT ACTIVATED");
+        }
+        lcd_send_string(alarmset_txt);
+        xSemaphoreGive(alarmset_Mutex);
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton  
+        // Put the time again to the LCD screen
+        lcd_clear();
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        // Format the date string
+        char date_buffer[64];
+        strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
+        lcd_send_string(date_buffer);
+        // Format the time string
+        char time_buffer[64];
+        strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
+        lcd_put_cur(1, 0);
+        lcd_send_string(time_buffer);  
+    }
+
+
+    if (etatBouton_1 == 0){ //declenche setting
         cpt = 0;
         ESP_LOGI(TAG, "compteur: %d", cpt); 
         //affiche sur LED
@@ -389,7 +436,7 @@ void bouton_alarme(void) {
 
     while (cpt <2) {
 
-        etatBouton = gpio_get_level(BOUTON_PIN_1);
+        etatBouton_1 = gpio_get_level(BOUTON_PIN_1);
         etatBouton_2 = gpio_get_level(BOUTON_PIN_2);
         if(cpt ==0 && etatBouton_2 == 0){ //augmente heure
             *hours += 1;
@@ -422,7 +469,7 @@ void bouton_alarme(void) {
             lcd_send_string(alarme_txt);
             vTaskDelay(pdMS_TO_TICKS(50));
         }
-        if(etatBouton == 0){ //change
+        if(etatBouton_1 == 0){ //change
             cpt +=1;
             ESP_LOGI(TAG, "compteur: %d", cpt);
 
@@ -436,22 +483,23 @@ void bouton_alarme(void) {
             lcd_put_cur(1,0);
             lcd_send_string(alarme_txt);
             } else if(cpt == 2){
-            lcd_clear();
-            time_t now;
-            struct tm timeinfo;
-            time(&now);
-            localtime_r(&now, &timeinfo);
-            
-            // Format the date string
-            char date_buffer[64];
-            strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
-            lcd_send_string(date_buffer);
+                ESP_LOGI(TAG, "alarm is set to %dh %dmin", *hours, *minutes);
+                lcd_clear();
+                time_t now;
+                struct tm timeinfo;
+                time(&now);
+                localtime_r(&now, &timeinfo);
+                
+                // Format the date string
+                char date_buffer[64];
+                strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
+                lcd_send_string(date_buffer);
 
-            // Format the time string
-            char time_buffer[64];
-            strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
-            lcd_put_cur(1, 0);
-            lcd_send_string(time_buffer);
+                // Format the time string
+                char time_buffer[64];
+                strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
+                lcd_put_cur(1, 0);
+                lcd_send_string(time_buffer);
         }
 
             vTaskDelay(pdMS_TO_TICKS(50));
@@ -468,7 +516,7 @@ void bouton_task(void *pvParameters)
     while (1)
     {    
         bouton_alarme();
-        vTaskDelay(1000 / portTICK_PERIOD_MS); // Update every 1 seconds
+        vTaskDelay(100 / portTICK_PERIOD_MS); // Update every 1 seconds
     }
 }
 
@@ -507,52 +555,55 @@ void set_led_brightness(uint8_t brightness) {
 void led_fade_task(void *pvParameters) {
     uint8_t brightness = 0;
     int8_t fade_direction = 1;  // 1 pour augmenter la luminosité, -1 pour diminuer
-
+    
     while (1) {
-        
+        // If alarm is set to true
+        xSemaphoreTake(alarmset_Mutex, portMAX_DELAY);
+        if (alarm_set) {
+            // on connait l'heure et la minute et la seconde, on veut lorsque on arrive à l'Heure aatendu brighness = 255
+            //on prend l'Heure moins 255/60=4.25;4minutes et on augmente de +1 toutes les secondes
+            time_t now;
+            struct tm timeinfo;
+            char strftime_buf[64];
+            time(&now);
+            localtime_r(&now, &timeinfo);
 
-        // on connait l'heure et la minute et la seconde, on veut lorsque on arrive à l'Heure aatendu brighness = 255
-        //on prend l'Heure moins 255/60=4.25;4minutes et on augmente de +1 toutes les secondes
+            strftime(strftime_buf, sizeof(strftime_buf), "%H:%M:%S", &timeinfo); // a afficher sur le lcd
+            int seconde_time = timeinfo.tm_sec;
+            int minute_time = timeinfo.tm_min;
+            int hour_time = timeinfo.tm_hour;
+            
+            // Convertir l'heure attendue en secondes pour faciliter la comparaison
+            int expected_time_in_seconds_before = (*hours * 3600) + ((*minutes - 4) * 60);
+            int expected_time_in_seconds_after = (*hours * 3600) + ((*minutes + 1) * 60);
+            int actual_time_in_sec = (hour_time * 3600 + minute_time * 60 + seconde_time);
 
-        time_t now;
-        struct tm timeinfo;
-        char strftime_buf[64];
-        time(&now);
-        localtime_r(&now, &timeinfo);
-
-        strftime(strftime_buf, sizeof(strftime_buf), "%H:%M:%S", &timeinfo); // a afficher sur le lcd
-        int seconde_time = timeinfo.tm_sec;
-        int minute_time = timeinfo.tm_min;
-        int hour_time = timeinfo.tm_hour;
-        
-        // Convertir l'heure attendue en secondes pour faciliter la comparaison
-        int expected_time_in_seconds_before = (*hours * 3600) + ((*minutes - 4) * 60);
-        int expected_time_in_seconds_after = (*hours * 3600) + ((*minutes + 1) * 60);
-        int actual_time_in_sec = (hour_time * 3600 + minute_time * 60 + seconde_time);
-
-        // Vérifier si l'heure actuelle est dans la plage souhaitée
-        if (actual_time_in_sec >= expected_time_in_seconds_before && actual_time_in_sec <= expected_time_in_seconds_after) {
-        
-            // Augmenter ou diminuer la luminosité
-            set_led_brightness(brightness);
-            brightness += fade_direction;
-
-            // Changer la direction si la luminosité atteint ses limites
-            if (brightness == 255 || brightness == 0) {
-                fade_direction = -fade_direction;
-            }
-
-            vTaskDelay(10000 / portTICK_PERIOD_MS);  // Délai pour la transition en douceur 60000 = 1m
-        }else{
-            if (brightness != 0){
-                brightness = 0;
+            // Vérifier si l'heure actuelle est dans la plage souhaitée
+            if (actual_time_in_sec >= expected_time_in_seconds_before && actual_time_in_sec <= expected_time_in_seconds_after) {
+            
+                // Augmenter ou diminuer la luminosité
                 set_led_brightness(brightness);
+                brightness += fade_direction;
+                // Changer la direction si la luminosité atteint ses limites
+                if (brightness == 255 || brightness == 0) {
+                    fade_direction = -fade_direction;
+                }
+            }else{
+                if (brightness != 0){
+                    brightness = 0;
+                    set_led_brightness(brightness);
+                }
             }
-            vTaskDelay(10000 / portTICK_PERIOD_MS);
+
+        }else{ // alarm set to deactivated
+            if (brightness != 0){
+                    brightness = 0;
+                    set_led_brightness(brightness);
+                }
         }
-
+        xSemaphoreGive(alarmset_Mutex);
+        vTaskDelay(10000 / portTICK_PERIOD_MS); // Delay of 10s
     }
-
 }
 //////////////////////////////////////////////////////////////////
 
@@ -578,15 +629,17 @@ void app_main(void)
     if (WIFI_CONNECTED_BIT != status){
     	ESP_LOGI(TAG, "Failed to associate Wifi");
     	return;
+    }else{
+        //configuration server http
+        httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+        httpd_handle_t server;
+
+        if (httpd_start(&server, &config)==ESP_OK){
+            httpd_register_uri_handler(server, &root);
+        }
     }
 
-    //configuration server http
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    httpd_handle_t server;
 
-    if (httpd_start(&server, &config)==ESP_OK){
-        httpd_register_uri_handler(server, &root);
-    }
 
     // Configuration de les broches (25) en mode analogique pour la LED
     configure_ledc();
@@ -595,7 +648,7 @@ void app_main(void)
 
     //////////////////////////////////////////////////////
     //initialise LCD
-    ESP_LOGI(TAG, "initialized alarm");
+    ESP_LOGI(TAG, "initialized time variable");
     initialize_time_variables();
     update_time(12,25);
     ESP_ERROR_CHECK(i2c_master_init());
@@ -604,6 +657,8 @@ void app_main(void)
     lcd_init();
     lcd_clear();
     ESP_LOGI(TAG, "Fin initialized LCD");    
+
+    alarmset_Mutex = xSemaphoreCreateMutex();
 
     // Créer la tâche pour l'obtention du temps
     xTaskCreate(obtain_time_task, "ObtainTimeTask", 4096, NULL, 1, NULL);
@@ -624,10 +679,11 @@ void app_main(void)
 
 	//////////////////////////////////////////////////////
     /*
+    ajouter systme de son
+    ajouter d'autre LED avec leurs resistance pour plus de lumière
     
-    // Add cleanup logic as needed
     // cleanup_time_variables();
     //////////////////////////////////////////////////////
     */
-}
 
+}

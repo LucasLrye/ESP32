@@ -1,0 +1,2 @@
+source /home/laroye/Projects/ESP32/wifi_test/build/gdbinit/symbols
+source /home/laroye/Projects/ESP32/wifi_test/build/gdbinit/connect

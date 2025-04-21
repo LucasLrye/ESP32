@@ -87,14 +87,14 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
-        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);   
+        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
 
 esp_err_t wifi_init_sta()
 {
 	esp_err_t status = WIFI_FAIL_BIT;
-    
+
 
 //initialize the esp networks
     ESP_ERROR_CHECK(esp_netif_init());
@@ -111,7 +111,7 @@ esp_err_t wifi_init_sta()
     s_wifi_event_group = xEventGroupCreate();
 
     esp_event_handler_instance_t instance_any_id;
-    
+
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                         ESP_EVENT_ANY_ID,
                                                         &event_handler,
@@ -164,7 +164,7 @@ esp_err_t wifi_init_sta()
     /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
      * happened. */
     if (bits & WIFI_CONNECTED_BIT) {
-        
+
         ESP_LOGI(TAG, "connected to ap SSID:%s password:",
                  EXAMPLE_ESP_WIFI_SSID); //Impossible de cacher le mot de passe..
         status = WIFI_CONNECTED_BIT;
@@ -193,7 +193,7 @@ void obtain_time(void){
 
     // Configurer le fuseau horaire pour la France (Paris)
     setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
-    
+
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, NTP_SERVER);
     sntp_init();
@@ -311,9 +311,9 @@ static esp_err_t i2c_master_init(void)
 //Btn poussoir
 //défini alarme
 // Broches du bouton poussoir et de la LED
-#define BOUTON_PIN_1 GPIO_NUM_2 
-#define BOUTON_PIN_2 GPIO_NUM_4  
-#define BOUTON_PIN_3 GPIO_NUM_5  
+#define BOUTON_PIN_1 GPIO_NUM_2
+#define BOUTON_PIN_2 GPIO_NUM_4
+#define BOUTON_PIN_3 GPIO_NUM_5
 
 void init_gpio() {
     gpio_config_t bouton_config_1 = {
@@ -401,7 +401,7 @@ void bouton_alarme(void) {
         }
         lcd_send_string(alarmset_txt);
         xSemaphoreGive(alarmset_Mutex);
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton  
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton
         // Put the time again to the LCD screen
         lcd_clear();
         time_t now;
@@ -416,13 +416,13 @@ void bouton_alarme(void) {
         char time_buffer[64];
         strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
         lcd_put_cur(1, 0);
-        lcd_send_string(time_buffer);  
+        lcd_send_string(time_buffer);
     }
 
 
     if (etatBouton_1 == 0){ //declenche setting
         cpt = 0;
-        ESP_LOGI(TAG, "compteur: %d", cpt); 
+        ESP_LOGI(TAG, "compteur: %d", cpt);
         //affiche sur LED
         lcd_clear();
         lcd_put_cur(0, 0);
@@ -431,7 +431,7 @@ void bouton_alarme(void) {
         char alarme_txt[64];
         snprintf(alarme_txt, sizeof(alarme_txt), "%dh %dmin", *hours, *minutes);
         lcd_send_string(alarme_txt);
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton       
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton
     }
 
     while (cpt <2) {
@@ -489,7 +489,7 @@ void bouton_alarme(void) {
                 struct tm timeinfo;
                 time(&now);
                 localtime_r(&now, &timeinfo);
-                
+
                 // Format the date string
                 char date_buffer[64];
                 strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
@@ -514,7 +514,7 @@ void bouton_alarme(void) {
 void bouton_task(void *pvParameters)
 {
     while (1)
-    {    
+    {
         bouton_alarme();
         vTaskDelay(100 / portTICK_PERIOD_MS); // Update every 1 seconds
     }
@@ -555,7 +555,7 @@ void set_led_brightness(uint8_t brightness) {
 void led_fade_task(void *pvParameters) {
     uint8_t brightness = 0;
     int8_t fade_direction = 1;  // 1 pour augmenter la luminosité, -1 pour diminuer
-    
+
     while (1) {
         // If alarm is set to true
         xSemaphoreTake(alarmset_Mutex, portMAX_DELAY);
@@ -572,7 +572,7 @@ void led_fade_task(void *pvParameters) {
             int seconde_time = timeinfo.tm_sec;
             int minute_time = timeinfo.tm_min;
             int hour_time = timeinfo.tm_hour;
-            
+
             // Convertir l'heure attendue en secondes pour faciliter la comparaison
             int expected_time_in_seconds_before = (*hours * 3600) + ((*minutes - 4) * 60);
             int expected_time_in_seconds_after = (*hours * 3600) + ((*minutes + 1) * 60);
@@ -580,7 +580,7 @@ void led_fade_task(void *pvParameters) {
 
             // Vérifier si l'heure actuelle est dans la plage souhaitée
             if (actual_time_in_sec >= expected_time_in_seconds_before && actual_time_in_sec <= expected_time_in_seconds_after) {
-            
+
                 // Augmenter ou diminuer la luminosité
                 set_led_brightness(brightness);
                 brightness += fade_direction;
@@ -607,9 +607,14 @@ void led_fade_task(void *pvParameters) {
 }
 //////////////////////////////////////////////////////////////////
 
-void app_main(void)
-{
-
+void app_main(int argc, char **argv) {
+    if(argc > 2) {
+        printf("%s\n", argv[2]);
+    }
+    else {
+        printf("No arguments\n");
+    }
+    ESP_LOGI(TAG, "First messsage ?");
 	//////////////////////////////////////////////////////
 	//WIFI
 	esp_err_t status = WIFI_FAIL_BIT;
@@ -656,15 +661,13 @@ void app_main(void)
     ESP_LOGI(TAG, "I2C initialized");
     lcd_init();
     lcd_clear();
-    ESP_LOGI(TAG, "Fin initialized LCD");    
+    ESP_LOGI(TAG, "Fin initialized LCD");
 
     alarmset_Mutex = xSemaphoreCreateMutex();
 
     // Créer la tâche pour l'obtention du temps
     xTaskCreate(obtain_time_task, "ObtainTimeTask", 4096, NULL, 1, NULL);
 
-    //Afficher heure sur LCD
-    //xTaskCreate(time_display_task, "time_display_task", 4096, NULL, 3, NULL);
 
     //Tache BTN
     xTaskCreate(bouton_task, "alarme setting", 4096, NULL, 2, NULL);
@@ -681,7 +684,7 @@ void app_main(void)
     /*
     ajouter systme de son
     ajouter d'autre LED avec leurs resistance pour plus de lumière
-    
+
     // cleanup_time_variables();
     //////////////////////////////////////////////////////
     */

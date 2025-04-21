@@ -113,3 +113,7 @@
 2367	2551	1745145696945894207	/home/laroye/Projects/ESP32/luminous_alarm/build/bootloader/.bin_timestamp	3249121bacea3753
 2551	2592	1745145696946894208	esp-idf/esptool_py/CMakeFiles/bootloader_check_size	c768331841df2e9b
 2551	2592	1745145696946894208	/home/laroye/Projects/ESP32/luminous_alarm/build/bootloader/esp-idf/esptool_py/CMakeFiles/bootloader_check_size	c768331841df2e9b
+101	169	1745246591468265121	esp-idf/esptool_py/CMakeFiles/bootloader_check_size	c768331841df2e9b
+101	169	1745246591468265121	/home/laroye/Projects/ESP32/luminous_alarm/build/bootloader/esp-idf/esptool_py/CMakeFiles/bootloader_check_size	c768331841df2e9b
+7	56	1745247328355035858	esp-idf/esptool_py/CMakeFiles/bootloader_check_size	c768331841df2e9b
+7	56	1745247328355035858	/home/laroye/Projects/ESP32/luminous_alarm/build/bootloader/esp-idf/esptool_py/CMakeFiles/bootloader_check_size	c768331841df2e9b

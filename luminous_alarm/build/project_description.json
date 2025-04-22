@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "luminous_alarm",
-    "project_version":    "c90af7a-dirty",
+    "project_version":    "575378e-dirty",
     "project_path":       "/home/laroye/Projects/solo/ESP32/luminous_alarm",
     "idf_path":           "/home/laroye/esp/esp-idf",
     "build_dir":          "/home/laroye/Projects/solo/ESP32/luminous_alarm/build",

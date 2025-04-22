@@ -32,9 +32,10 @@ int *hours;
 int *minutes;
 // Alarm set or NOT, use semaphore there because it is use at different place to know if we have the alarm or not
 bool alarm_set = false;
-bool lcd_on = true;
 SemaphoreHandle_t alarmset_Mutex;
-
+/// To know if the LCD is on or off
+bool lcd_off = false;
+bool first_epoch = true;
 
 #define I2C_MASTER_SCL_IO           CONFIG_I2C_MASTER_SCL      /*!< GPIO number used for I2C master clock 22*/
 #define I2C_MASTER_SDA_IO           CONFIG_I2C_MASTER_SDA      /*!< GPIO number used for I2C master data  21*/
@@ -219,11 +220,14 @@ void obtain_time(void){
 
 }
 
-void display_time_on_monitor(void) {
+/// LCD Part
+int display_time_on_monitor(void) {
 
-    // LCD Part
-    lcd_clear();
-    lcd_put_cur(0, 0);
+
+    // test the connexion to the lcd
+    if (lcd_put_cur(0, 0) == 1){
+        return 1;
+    }
 
     time_t now;
     struct tm timeinfo;
@@ -231,10 +235,16 @@ void display_time_on_monitor(void) {
     time(&now);
     localtime_r(&now, &timeinfo);
     int seconde_time = timeinfo.tm_sec;
-    if (seconde_time != 0){
+    ESP_LOGI(TAG, "First epoch ?? %i", first_epoch);
+    if (seconde_time != 0 && !first_epoch){
+    ESP_LOGI(TAG, "TEST waiting ?? %i", first_epoch);
         vTaskDelay((60000-(seconde_time*1000)) / portTICK_PERIOD_MS);  // Délai de 60-seconde
-    }
+    }else if (first_epoch){
+        lcd_init();
+    }else{}
 
+    lcd_clear();
+    lcd_put_cur(0, 0);
     // Get the current time avec seconde à 00
     time(&now);
     localtime_r(&now, &timeinfo);
@@ -244,13 +254,13 @@ void display_time_on_monitor(void) {
 
     // Format the date string
     char date_buffer[64];
-    strftime(date_buffer, sizeof(date_buffer), "%A %d/%m", &timeinfo);
+    strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
     ESP_LOGI(TAG, "check buffer %s", date_buffer);
     lcd_send_string(date_buffer);
 
     // Format the time string
     char time_buffer[64];
-    strftime(time_buffer, sizeof(time_buffer), "W%U,  %H:%M", &timeinfo);
+    strftime(time_buffer, sizeof(time_buffer), "wk%U   %H:%M", &timeinfo);
     lcd_put_cur(1, 0);
     ESP_LOGI(TAG, "check buffer time %s", time_buffer);
     lcd_send_string(time_buffer);
@@ -258,6 +268,7 @@ void display_time_on_monitor(void) {
     //Console Part
     ESP_LOGI(TAG, "Date: %s", date_buffer);
     ESP_LOGI(TAG, "Time: %s", time_buffer);
+    return 0;
     }
 
 
@@ -270,8 +281,21 @@ void obtain_time_task(void *pvParameters) {
 
 void display_time_on_monitor_task(void *pvParameters) {
     while (1) {
-        display_time_on_monitor();
-        vTaskDelay(60000 / portTICK_PERIOD_MS);  // Attendre 1 minute entre les affichages
+        if (lcd_off == 0){
+            lcd_off = display_time_on_monitor();
+            if (lcd_off == 0 && !first_epoch){
+                vTaskDelay(60000 / portTICK_PERIOD_MS);  // Attendre 1 minute entre les affichages
+            }else{
+                if (first_epoch) first_epoch = false;
+                vTaskDelay(1000 / portTICK_PERIOD_MS); // Update every 1 seconds
+            }
+        }else{
+            first_epoch = true;
+            lcd_off = lcd_init();
+            lcd_off = lcd_clear();
+            ESP_LOGI(TAG, "LCD is : %i", lcd_off);
+            vTaskDelay(1000 / portTICK_PERIOD_MS); // Update every 1 seconds
+        }
     }
 }
 
@@ -315,7 +339,7 @@ static esp_err_t i2c_master_init(void)
 // Broches du bouton poussoir et de la LED
 // Color Green -> modify alarm clock -> h, m, show now()
 #define BOUTON_PIN_1 GPIO_NUM_2
-// Color Blue -> increase/decrease time of alarm clock && light up/off the lcd
+// Color Blue -> To reset the LCD because backlight doesn't work, so we are using a interruptor
 #define BOUTON_PIN_2 GPIO_NUM_4
 // Color White -> activated/deactivated alarm clock
 #define BOUTON_PIN_3 GPIO_NUM_5
@@ -382,18 +406,6 @@ void cleanup_time_variables(void)
     free(minutes);
 }
 
-// lcd control vol
-#include "driver/gpio.h"
-#define BACKLIGHT_PIN 14 // Replace with the actual pin number
-void lcd_backlight_control(int state) {
-    esp_rom_gpio_pad_select_gpio(BACKLIGHT_PIN);
-    gpio_set_direction(BACKLIGHT_PIN, GPIO_MODE_OUTPUT);
-    if (state == 0) {
-        gpio_set_level(BACKLIGHT_PIN, 0); // Set the output level to 0V
-    } else {
-        gpio_set_level(BACKLIGHT_PIN, 1); // Set the output level to 3.3V
-    }
-}
 
 // Button of the alarm
 void bouton_alarme(void) {
@@ -422,7 +434,9 @@ void bouton_alarme(void) {
         xSemaphoreGive(alarmset_Mutex);
         vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton
         // Put the time again to the LCD screen
-        lcd_clear();
+        if (lcd_clear() == 1){
+            lcd_off = 1;
+        }else{
         time_t now;
         struct tm timeinfo;
         time(&now);
@@ -436,15 +450,31 @@ void bouton_alarme(void) {
         strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
         lcd_put_cur(1, 0);
         lcd_send_string(time_buffer);
+        }
     }
 
     // if we push blue button -> allume ou eteint lcd
     if (etatBouton_2 == 0){
-        lcd_on = !lcd_on;
-        int lcd_int = (int)lcd_on;
-        lcd_backlight_control(lcd_int);
-        ESP_LOGI(TAG, "LCD is now  %s\n", lcd_on ? "true" : "false");
+        lcd_off = lcd_init();
+        if (lcd_off == 0){
+        lcd_clear();
         vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton
+        // Put the time again to the LCD screen
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        // Format the date string
+        char date_buffer[64];
+        strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
+        lcd_send_string(date_buffer);
+        // Format the time string
+        char time_buffer[64];
+        strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
+        lcd_put_cur(1, 0);
+        lcd_send_string(time_buffer);
+        }
+        ESP_LOGI(TAG, "LCD is now  %s\n", lcd_off ? "false" : "true");
     }
 
 
@@ -452,15 +482,20 @@ void bouton_alarme(void) {
         cpt = 0;
         ESP_LOGI(TAG, "compteur: %d", cpt);
         //affiche sur LED
-        lcd_clear();
-        lcd_put_cur(0, 0);
-        lcd_send_string("Alarm set to (h): ");
-        lcd_put_cur(1,0);
-        char alarme_txt[64];
-        snprintf(alarme_txt, sizeof(alarme_txt), "%dh %dmin", *hours, *minutes);
-        lcd_send_string(alarme_txt);
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton
+        if (lcd_clear() == 1){
+            lcd_off = 1;
+            cpt = 3;
+        }else{
+            lcd_put_cur(0, 0);
+            lcd_send_string("Alarm set to (h): ");
+            lcd_put_cur(1,0);
+            char alarme_txt[64];
+            snprintf(alarme_txt, sizeof(alarme_txt), "%dh %dmin", *hours, *minutes);
+            lcd_send_string(alarme_txt);
+            vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton
+        }
     }
+
 
     while (cpt <2) {
 
@@ -542,7 +577,7 @@ void bouton_alarme(void) {
 
 
 
-///
+/// Task concerning Button
 void bouton_task(void *pvParameters)
 {
     while (1)
@@ -553,7 +588,10 @@ void bouton_task(void *pvParameters)
 }
 
 /////////////////////////////////////////////////////
-#define LED_PIN 25 //LED
+/// LED
+#define LED_PIN 25
+#define LED_PIN_1 26
+
 //Configuration
 void configure_ledc() {
     // Configurer le canal LEDC
@@ -565,6 +603,7 @@ void configure_ledc() {
     };
     ledc_timer_config(&ledc_timer);
 
+    /// LED 0
     ledc_channel_config_t ledc_channel = {
         .gpio_num = LED_PIN,
         .speed_mode = LEDC_HIGH_SPEED_MODE,
@@ -575,12 +614,26 @@ void configure_ledc() {
         .hpoint = 0,
     };
     ledc_channel_config(&ledc_channel);
+
+    /// LED 1
+    ledc_channel_config_t ledc_channel1 = {
+        .gpio_num = LED_PIN_1,
+        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .channel = LEDC_CHANNEL_0,
+        .intr_type = LEDC_INTR_DISABLE,
+        .timer_sel = LEDC_TIMER_0,
+        .duty = 0,  // Initial duty cycle (0 to 255)
+        .hpoint = 0,
+    };
+    ledc_channel_config(&ledc_channel1);
 }
 
 void set_led_brightness(uint8_t brightness) {
     // Configurer la luminosité de la LED en utilisant le canal LEDC
     ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, brightness);
     ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1, brightness);
+    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1);
 }
 
 //Ajustement de la LED
@@ -676,7 +729,6 @@ void app_main(void) {
     // Configuration des boutons
     init_gpio();
 
-    lcd_backlight_control(1);
     //////////////////////////////////////////////////////
     //initialise LCD
     ESP_LOGI(TAG, "initialized time variable");
@@ -685,14 +737,19 @@ void app_main(void) {
     ESP_ERROR_CHECK(i2c_master_init());
 
     ESP_LOGI(TAG, "I2C initialized");
-    lcd_init();
-    lcd_clear();
+    lcd_off = lcd_init();
+    lcd_off = lcd_clear();
     ESP_LOGI(TAG, "Fin initialized LCD");
+    ESP_LOGI(TAG, "LCD is %i", lcd_off);
+
 
     alarmset_Mutex = xSemaphoreCreateMutex();
 
     // Créer la tâche pour l'obtention du temps
     xTaskCreate(obtain_time_task, "ObtainTimeTask", 4096, NULL, 1, NULL);
+
+
+    vTaskDelay(5000 / portTICK_PERIOD_MS); // Delay of 5s for test because i got first epoch and nothing is displaying might be too fast
 
 
     //Tache BTN
@@ -708,10 +765,13 @@ void app_main(void) {
 
 	//////////////////////////////////////////////////////
     /*
+    Make some lib to have separated fct because the reveil.c is kinda big
+
+    Get the T° ??
     ajouter systme de son
     ajouter d'autre LED avec leurs resistance pour plus de lumière
 
-    // cleanup_time_variables();
+    cleanup_time_variables();
     //////////////////////////////////////////////////////
     */
 

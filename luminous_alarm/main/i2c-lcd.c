@@ -14,7 +14,7 @@ esp_err_t err;
 
 static const char *TAG = "LCD";
 
-void lcd_send_cmd (char cmd)
+int lcd_send_cmd (char cmd)
 {
   char data_u, data_l;
 	uint8_t data_t[4];
@@ -25,10 +25,14 @@ void lcd_send_cmd (char cmd)
 	data_t[2] = data_l|0x0C;  //en=1, rs=0
 	data_t[3] = data_l|0x08;  //en=0, rs=0
 	err = i2c_master_write_to_device(I2C_NUM, SLAVE_ADDRESS_LCD, data_t, 4, 1000);
-	if (err!=0) ESP_LOGI(TAG, "Error in sending command");
+	if (err!=0){
+        ESP_LOGI(TAG, "Error in sending command");
+        return 1;
+    }
+    return 0;
 }
 
-void lcd_send_data (char data)
+int lcd_send_data (char data)
 {
 	char data_u, data_l;
 	uint8_t data_t[4];
@@ -39,16 +43,21 @@ void lcd_send_data (char data)
 	data_t[2] = data_l|0x0D;  //en=1, rs=0
 	data_t[3] = data_l|0x09;  //en=0, rs=0
 	err = i2c_master_write_to_device(I2C_NUM, SLAVE_ADDRESS_LCD, data_t, 4, 1000);
-	if (err!=0) ESP_LOGI(TAG, "Error in sending data");
+	if (err!=0){
+        ESP_LOGI(TAG, "Error in sending data");
+    return 1;
+    }
+    return 0;
 }
 
-void lcd_clear (void)
+int lcd_clear (void)
 {
-	lcd_send_cmd (0x01);
+	int ret = lcd_send_cmd (0x01);
 	usleep(5000);
+    return ret;
 }
 
-void lcd_put_cur(int row, int col)
+int lcd_put_cur(int row, int col)
 {
     switch (row)
     {
@@ -60,15 +69,16 @@ void lcd_put_cur(int row, int col)
             break;
     }
 
-    lcd_send_cmd (col);
+   int ret = lcd_send_cmd (col);
+    return ret;
 }
 
 
-void lcd_init (void)
+int lcd_init (void)
 {
 	// 4 bit initialisation
 	usleep(50000);  // wait for >40ms
-	lcd_send_cmd (0x30);
+	if (lcd_send_cmd (0x30) == 1) return 1;
 	usleep(5000);  // wait for >4.1ms
 	lcd_send_cmd (0x30);
 	usleep(200);  // wait for >100us
@@ -89,6 +99,7 @@ void lcd_init (void)
 	usleep(1000);
 	lcd_send_cmd (0x0C); //Display on/off control --> D = 1, C and B = 0. (Cursor and blink, last two bits)
 	usleep(1000);
+    return 0;
 }
 
 
@@ -96,7 +107,11 @@ void lcd_init (void)
 
 
 
-void lcd_send_string (char *str)
+int lcd_send_string (char *str)
 {
-	while (*str) lcd_send_data (*str++);
+    int ret = 0;
+	while (*str){
+        ret = lcd_send_data (*str++);
+    }
+    return ret;
 }

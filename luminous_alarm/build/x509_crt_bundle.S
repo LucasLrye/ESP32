@@ -1,4 +1,4 @@
-/* * Data converted from /home/laroye/Projects/ESP32/luminous_alarm/build/esp-idf/mbedtls/x509_crt_bundle
+/* * Data converted from /home/laroye/Projects/solo/ESP32/luminous_alarm/build/esp-idf/mbedtls/x509_crt_bundle
  */
 .data
 #if !defined (__APPLE__) && !defined (__linux__)

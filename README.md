@@ -24,3 +24,15 @@ To flash into your device (you can also monitor) :
 ``` bash
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
+
+# debug
+ Sometime you have to give acces to the serial port :
+``` bash
+sudo chown $USER:$USER /dev/ttyUSB0
+```
+
+To stop monitor :
+
+``` bash
+ctrl+T X
+```

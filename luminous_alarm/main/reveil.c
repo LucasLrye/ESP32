@@ -32,7 +32,9 @@ int *hours;
 int *minutes;
 // Alarm set or NOT, use semaphore there because it is use at different place to know if we have the alarm or not
 bool alarm_set = false;
+bool lcd_on = true;
 SemaphoreHandle_t alarmset_Mutex;
+
 
 #define I2C_MASTER_SCL_IO           CONFIG_I2C_MASTER_SCL      /*!< GPIO number used for I2C master clock 22*/
 #define I2C_MASTER_SDA_IO           CONFIG_I2C_MASTER_SDA      /*!< GPIO number used for I2C master data  21*/
@@ -242,15 +244,15 @@ void display_time_on_monitor(void) {
 
     // Format the date string
     char date_buffer[64];
-    strftime(date_buffer, sizeof(date_buffer), "%A %d/%m/%y", &timeinfo);
-
+    strftime(date_buffer, sizeof(date_buffer), "%A %d/%m", &timeinfo);
+    ESP_LOGI(TAG, "check buffer %s", date_buffer);
     lcd_send_string(date_buffer);
 
     // Format the time string
     char time_buffer[64];
-    strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
-
+    strftime(time_buffer, sizeof(time_buffer), "W%U,  %H:%M", &timeinfo);
     lcd_put_cur(1, 0);
+    ESP_LOGI(TAG, "check buffer time %s", time_buffer);
     lcd_send_string(time_buffer);
 
     //Console Part
@@ -298,8 +300,8 @@ static esp_err_t i2c_master_init(void)
         .mode = I2C_MODE_MASTER,
         .sda_io_num = GPIO_NUM_21,
         .scl_io_num = GPIO_NUM_22,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .sda_pullup_en = GPIO_PULLUP_DISABLE,
+        .scl_pullup_en = GPIO_PULLUP_DISABLE,
         .master.clk_speed = 100000,
     };
 
@@ -311,8 +313,11 @@ static esp_err_t i2c_master_init(void)
 //Btn poussoir
 //défini alarme
 // Broches du bouton poussoir et de la LED
+// Color Green -> modify alarm clock -> h, m, show now()
 #define BOUTON_PIN_1 GPIO_NUM_2
+// Color Blue -> increase/decrease time of alarm clock && light up/off the lcd
 #define BOUTON_PIN_2 GPIO_NUM_4
+// Color White -> activated/deactivated alarm clock
 #define BOUTON_PIN_3 GPIO_NUM_5
 
 void init_gpio() {
@@ -377,6 +382,20 @@ void cleanup_time_variables(void)
     free(minutes);
 }
 
+// lcd control vol
+#include "driver/gpio.h"
+#define BACKLIGHT_PIN 14 // Replace with the actual pin number
+void lcd_backlight_control(int state) {
+    esp_rom_gpio_pad_select_gpio(BACKLIGHT_PIN);
+    gpio_set_direction(BACKLIGHT_PIN, GPIO_MODE_OUTPUT);
+    if (state == 0) {
+        gpio_set_level(BACKLIGHT_PIN, 0); // Set the output level to 0V
+    } else {
+        gpio_set_level(BACKLIGHT_PIN, 1); // Set the output level to 3.3V
+    }
+}
+
+// Button of the alarm
 void bouton_alarme(void) {
     int etatBouton_1 = gpio_get_level(BOUTON_PIN_1);
     int etatBouton_2 = gpio_get_level(BOUTON_PIN_2);
@@ -417,6 +436,15 @@ void bouton_alarme(void) {
         strftime(time_buffer, sizeof(time_buffer), "Week %U, %H:%M", &timeinfo);
         lcd_put_cur(1, 0);
         lcd_send_string(time_buffer);
+    }
+
+    // if we push blue button -> allume ou eteint lcd
+    if (etatBouton_2 == 0){
+        lcd_on = !lcd_on;
+        int lcd_int = (int)lcd_on;
+        lcd_backlight_control(lcd_int);
+        ESP_LOGI(TAG, "LCD is now  %s\n", lcd_on ? "true" : "false");
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Attendre un court moment pour éviter les rebonds du bouton
     }
 
 
@@ -511,6 +539,10 @@ void bouton_alarme(void) {
 
 }
 
+
+
+
+///
 void bouton_task(void *pvParameters)
 {
     while (1)
@@ -607,14 +639,7 @@ void led_fade_task(void *pvParameters) {
 }
 //////////////////////////////////////////////////////////////////
 
-void app_main(int argc, char **argv) {
-    if(argc > 2) {
-        printf("%s\n", argv[2]);
-    }
-    else {
-        printf("No arguments\n");
-    }
-    ESP_LOGI(TAG, "First messsage ?");
+void app_main(void) {
 	//////////////////////////////////////////////////////
 	//WIFI
 	esp_err_t status = WIFI_FAIL_BIT;
@@ -651,6 +676,7 @@ void app_main(int argc, char **argv) {
     // Configuration des boutons
     init_gpio();
 
+    lcd_backlight_control(1);
     //////////////////////////////////////////////////////
     //initialise LCD
     ESP_LOGI(TAG, "initialized time variable");

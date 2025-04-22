@@ -1,2 +1,2 @@
-source /home/laroye/Projects/ESP32/luminous_alarm/build/bootloader/gdbinit/symbols
-source /home/laroye/Projects/ESP32/luminous_alarm/build/bootloader/gdbinit/connect
+source /home/laroye/Projects/solo/ESP32/luminous_alarm/build/bootloader/gdbinit/symbols
+source /home/laroye/Projects/solo/ESP32/luminous_alarm/build/bootloader/gdbinit/connect

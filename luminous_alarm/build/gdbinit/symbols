@@ -18,8 +18,8 @@ end
 
 # Load bootloader symbols
 set confirm off
-    add-symbol-file /home/laroye/Projects/ESP32/luminous_alarm/build/bootloader/bootloader.elf
+    add-symbol-file /home/laroye/Projects/solo/ESP32/luminous_alarm/build/bootloader/bootloader.elf
 set confirm on
 
 # Load application symbols
-file /home/laroye/Projects/ESP32/luminous_alarm/build/luminous_alarm.elf
+file /home/laroye/Projects/solo/ESP32/luminous_alarm/build/luminous_alarm.elf

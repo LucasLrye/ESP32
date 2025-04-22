@@ -91,6 +91,11 @@ void lcd_init (void)
 	usleep(1000);
 }
 
+
+
+
+
+
 void lcd_send_string (char *str)
 {
 	while (*str) lcd_send_data (*str++);

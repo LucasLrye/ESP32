@@ -22,4 +22,4 @@ set confirm off
 set confirm on
 
 # Load application symbols
-file /home/laroye/Projects/ESP32/luminous_alarm/build/bootloader/bootloader.elf
+file /home/laroye/Projects/solo/ESP32/luminous_alarm/build/bootloader/bootloader.elf

@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "luminous_alarm",
-    "project_version":    "575378e-dirty",
+    "project_version":    "8d0e784-dirty",
     "project_path":       "/home/laroye/Projects/solo/ESP32/luminous_alarm",
     "idf_path":           "/home/laroye/esp/esp-idf",
     "build_dir":          "/home/laroye/Projects/solo/ESP32/luminous_alarm/build",
@@ -1195,7 +1195,7 @@
             "managed_reqs": [],
             "managed_priv_reqs": [],
             "file": "/home/laroye/Projects/solo/ESP32/luminous_alarm/build/esp-idf/main/libmain.a",
-            "sources": [ "/home/laroye/Projects/solo/ESP32/luminous_alarm/main/reveil.c", "/home/laroye/Projects/solo/ESP32/luminous_alarm/main/i2c-lcd.c" ],
+            "sources": [ "/home/laroye/Projects/solo/ESP32/luminous_alarm/main/reveil.c", "/home/laroye/Projects/solo/ESP32/luminous_alarm/main/i2c-lcd.c", "/home/laroye/Projects/solo/ESP32/luminous_alarm/main/wifi.c", "/home/laroye/Projects/solo/ESP32/luminous_alarm/main/btn_push.c" ],
             "include_dirs": [ "." ]
         },
         "mbedtls": {
